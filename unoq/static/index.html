@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tricorder</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f0c36a;
+      --dim: #8d7344;
+      --line: #3a2d18;
+      --bg: #07080c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.28em;
+      font-weight: 500;
+    }
+    .status { color: var(--dim); font-size: 13px; }
+    figure { margin: 28px 0 8px; }
+    img {
+      width: min(100%, 528px);
+      height: auto;
+      image-rendering: pixelated;
+      background: #101218;
+      border: 1px solid var(--line);
+    }
+    .empty {
+      width: min(100%, 528px);
+      height: 220px;
+      border: 1px dashed var(--line);
+      color: var(--dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    button {
+      margin-top: 18px;
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--ink);
+      font: inherit;
+      letter-spacing: 0.16em;
+      padding: 10px 18px;
+      cursor: pointer;
+    }
+    button:disabled { color: var(--dim); border-color: var(--line); cursor: default; }
+    p.report {
+      margin-top: 28px;
+      font-size: 22px;
+      line-height: 1.45;
+      min-height: 2.2em;
+    }
+    p.error { color: #e07a5f; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>TRICORDER</h1>
+      <div class="status" id="status">Ready</div>
+    </header>
+    <figure>
+      <img id="shot" alt="Latest camera frame" hidden>
+      <div class="empty" id="placeholder">No scan yet</div>
+    </figure>
+    <button id="scan" type="button">SCAN</button>
+    <p class="report" id="report"></p>
+    <p class="error" id="error"></p>
+  </main>
+  <script>
+    const statusEl = document.getElementById("status");
+    const shot = document.getElementById("shot");
+    const placeholder = document.getElementById("placeholder");
+    const reportEl = document.getElementById("report");
+    const errorEl = document.getElementById("error");
+    const button = document.getElementById("scan");
+    let seenImage = false;
+
+    const labels = {
+      idle: "Ready",
+      waiting_camera: "Contacting the camera",
+      reading: "Reading sensors on the board",
+      done: "Report filed",
+      error: "Scan interrupted"
+    };
+
+    async function refresh() {
+      const res = await fetch("/status", { cache: "no-store" });
+      const state = await res.json();
+      statusEl.textContent = labels[state.phase] || state.phase;
+      button.disabled = state.phase === "waiting_camera" || state.phase === "reading";
+      reportEl.textContent = state.report || "";
+      errorEl.textContent = state.error || "";
+      if (state.phase === "waiting_camera") {
+        seenImage = false;
+      }
+      if (state.has_image && !seenImage && state.phase !== "waiting_camera") {
+        shot.src = "/snapshot?t=" + Date.now();
+        shot.hidden = false;
+        placeholder.hidden = true;
+        seenImage = true;
+      }
+    }
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      reportEl.textContent = "";
+      errorEl.textContent = "";
+      statusEl.textContent = labels.waiting_camera;
+      await fetch("/request-scan", { method: "POST" });
+      refresh();
+    });
+
+    refresh();
+    setInterval(refresh, 800);
+  </script>
+</body>
+</html>

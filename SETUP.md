@@ -25,13 +25,13 @@ You switch between two shells. Each command below says which one.
 
 ## Replace these before you run a command
 
-These tokens are not real values. Type your own in their place. Leave every other part of the command as written.
+These tokens are not real values. Type your own in their place before you press Return. Leave every other part of the command as written. Pasting a token unchanged makes the command fail. `YOUR_NANO_PORT` is not a serial device, and upload then says `No device found on YOUR_NANO_PORT`.
 
 | Token | Replace with | Example from one setup |
 | --- | --- | --- |
 | `PROJECT_DIR` | The folder on your computer that contains `SETUP.md`, `mac/`, `nano/`, and `unoq/` | `/Users/you/Desktop/Arduino-Image-Scanner` |
 | `YOUR_BOARD` | The Uno Q's mDNS name or, if the name does not resolve, its Wi-Fi address | `roarduino.local` or `192.168.1.12` |
-| `YOUR_NANO_PORT` | The Nano's serial port from `./tools/arduino-cli board list` | `/dev/cu.usbmodem31201` on macOS |
+| `/dev/cu.usbmodem31101` | The Port cell for `Arduino Nano 33 BLE` in `./tools/arduino-cli board list` | `/dev/cu.usbmodem31101` |
 
 Do not change these unless you deliberately installed something somewhere else:
 
@@ -182,19 +182,21 @@ The sketch in `PROJECT_DIR/nano/tricorder_cam` waits for the letter `S` on seria
 ./tools/arduino-cli board list
 ```
 
-On macOS the Nano looks like `/dev/cu.usbmodem…`. Copy that whole path. It is `YOUR_NANO_PORT` in the next commands. One computer used `/dev/cu.usbmodem31201`. Yours will differ. Do not change `--fqbn arduino:mbed_nano:nano33ble` or the sketch folder `nano/tricorder_cam`.
+On macOS the Nano's port looks like `/dev/cu.usbmodem…`. In the `board list` table, copy the Port cell from the row whose Board Name is `Arduino Nano 33 BLE`. Ignore `Bluetooth-Incoming-Port` and `debug-console`.
+
+In the commands below, change only `/dev/cu.usbmodem31101` if your Port cell is different. That path is one Nano on one Mac, and the number changes when the board is plugged into a different USB socket. Do not change `--fqbn arduino:mbed_nano:nano33ble` or the sketch folder `nano/tricorder_cam`.
 
 ```sh
 ./tools/arduino-cli compile --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
-./tools/arduino-cli upload -p YOUR_NANO_PORT --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
+./tools/arduino-cli upload -p /dev/cu.usbmodem31101 --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
 ```
 
-A warning that the camera library says `mbed` rather than `mbed_nano` can be ignored.
+A warning that the camera library says `mbed` rather than `mbed_nano` can be ignored. The compile succeeded when the next lines report program storage and dynamic memory.
 
-Check the camera on its own, before involving the Uno Q. The PNG is saved on the computer at `/tmp/frame.png`. Replace `YOUR_NANO_PORT` only.
+Check the camera on its own, before involving the Uno Q. The PNG is saved on the computer at `/tmp/frame.png`. Use the same port you passed to `upload`.
 
 ```sh
-.venv/bin/python mac/relay.py --port YOUR_NANO_PORT --once /tmp/frame.png
+.venv/bin/python mac/relay.py --port /dev/cu.usbmodem31101 --once /tmp/frame.png
 ```
 
 Open `/tmp/frame.png` from the computer (Finder → Go → Go to Folder, or `open /tmp/frame.png` in the computer terminal). If the colors are swapped, add `--swap-bytes` to this command and to the relay command in the last step.
@@ -242,11 +244,10 @@ python3 ~/tricorder/tricorder.py
 
 `tricorder.py` is the copy at `/home/arduino/tricorder/tricorder.py`. That prints `tricorder http://0.0.0.0:8090`. The page listens on IPv4 and IPv6.
 
-**Computer terminal.** A third window, not an SSH session. `cd` to `PROJECT_DIR`. Replace `YOUR_BOARD` and `YOUR_NANO_PORT`. Add `--swap-bytes` after the port only if `/tmp/frame.png` had swapped colors.
+**Computer terminal.** A third window, not an SSH session. You are already in `PROJECT_DIR` if the prompt ends in `Arduino-Image-Scanner`. Replace `YOUR_BOARD`. Use the same `/dev/cu.usbmodem…` port as the upload in step 5. Add `--swap-bytes` after the port only if `/tmp/frame.png` had swapped colors.
 
 ```sh
-cd PROJECT_DIR
-.venv/bin/python mac/relay.py --host http://YOUR_BOARD:8090 --port YOUR_NANO_PORT
+.venv/bin/python mac/relay.py --host http://YOUR_BOARD:8090 --port /dev/cu.usbmodem31101
 ```
 
 It prints `waiting for Scan on http://YOUR_BOARD:8090`. If you used an mDNS name and it does not resolve, run `hostname -I` in an Arduino terminal, ignore `172.17.0.1`, and run the same command again with that address as `YOUR_BOARD`.
@@ -277,7 +278,7 @@ The report wording lives in the `SYSTEM` string in `PROJECT_DIR/unoq/tricorder.p
 | Model HTTP API | `GEMMA_URL` in that same Arduino terminal |
 | Model files and `llama-server` | `MODEL`, `MMPROJ`, `LLAMA_SERVER` in the Arduino terminal that starts `start-gemma.sh`, if your copies are not in `/home/arduino/models` and `/home/arduino/llama.cpp/build/bin` |
 | Board address the computer calls | `YOUR_BOARD` in `mac/relay.py --host` and in the browser URL |
-| Nano serial port | `YOUR_NANO_PORT` |
+| Nano serial port | The `/dev/cu.usbmodem…` path in the upload and relay commands |
 | Swapped red and blue | `--swap-bytes` on the computer-terminal relay command |
 
 `tricorder.py` only needs the Python standard library on the Uno Q. The computer needs `pyserial`, from `mac/requirements.txt`, installed into `PROJECT_DIR/.venv`.

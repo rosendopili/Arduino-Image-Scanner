@@ -46,7 +46,7 @@ void setup() {
   }
   Serial.println("BOOT");
 
-  if (!Camera.begin(QCIF, RGB565, 1, OV7675)) {
+  if (!Camera.begin(QCIF, RGB565, 1)) {
     Serial.println("CAM_FAIL");
     blinkRedForever();
   }

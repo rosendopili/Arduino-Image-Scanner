@@ -128,12 +128,15 @@ stat -c '%n %s' /home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf
 cd PROJECT_DIR
 ```
 
-The virtualenv is created at `PROJECT_DIR/.venv/` on the computer:
+The virtualenv is created at `PROJECT_DIR/.venv/` on the computer. Scripts inside it store that folder's full path. If the project was renamed or moved, or if `.venv` is already there, delete it first. Running `python3 -m venv .venv` again on an existing folder leaves the old path in place, and `pip` then fails with `bad interpreter: No such file or directory`.
 
 ```sh
+rm -rf .venv
 python3 -m venv .venv
 .venv/bin/pip install -r mac/requirements.txt
 ```
+
+If the prompt already shows `(.venv)`, run `deactivate` after the new environment is created. This guide calls `.venv/bin/pip` and `.venv/bin/python` by path, so you do not have to activate it.
 
 The Arduino CLI is saved at `PROJECT_DIR/tools/arduino-cli`. `tools/` stays on your computer and is not part of the git history.
 

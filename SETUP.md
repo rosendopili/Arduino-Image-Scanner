@@ -58,21 +58,6 @@ df -h / /home/arduino
 
 `/home/arduino` needs several gigabytes free for the source tree and the weights. Keep the 5 GB root partition clear of model files and build output.
 
-If a previous Ollama install is still on the board, remove it, then check again:
-
-```sh
-sudo systemctl stop ollama
-sudo systemctl disable ollama
-sudo rm -f /etc/systemd/system/ollama.service
-sudo rm -rf /etc/systemd/system/ollama.service.d
-sudo systemctl daemon-reload
-sudo rm -f /usr/local/bin/ollama /usr/bin/ollama
-sudo rm -rf /usr/local/lib/ollama /usr/lib/ollama /usr/share/ollama
-sudo rm -rf /home/arduino/ollama_models /home/arduino/.ollama /root/.ollama
-sudo apt clean
-df -h / /home/arduino
-```
-
 ## 3. Build llama.cpp on the board
 
 Stay in the SSH session. This compile uses the board's CPU. Leave it running until both targets finish.

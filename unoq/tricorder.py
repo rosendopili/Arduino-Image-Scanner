@@ -22,7 +22,7 @@ SNAPSHOT = ROOT / "last.png"
 
 SYSTEM = (
     "You are a Starfleet tricorder. Reply with one sentence, no more than 25 words. "
-    "Describe what the image shows as an away-team sensor report. "
+    "Describe what the image shows as concisely as possible. Read text if possible."
     "If the picture is too unclear, say what the sensors cannot resolve. "
     "Do not mention being a language model."
 )

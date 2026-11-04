@@ -11,9 +11,49 @@ OV7675  →  Nano 33 BLE  →  USB serial  →  computer (relay.py)
                          browser  ←  Uno Q (tricorder.py + Gemma)
 ```
 
-This board was named `RoArduino` and answered at `roarduino.local`. If you choose another name during setup, use that name everywhere this guide says `roarduino.local`.
+Build `llama.cpp` and download the Gemma text weights by following [GEMMA_SETUP.md](GEMMA_SETUP.md) first. This guide does not repeat those steps. It adds the vision projector, the camera sketch, and the viewscreen.
 
-Quit Arduino App Lab before you load Gemma. The model needs the board's memory.
+Quit Arduino App Lab before you start Gemma here. The model needs the board's memory. Also stop the chat server from GEMMA_SETUP.md if it is still running (Ctrl-C in that Arduino terminal). It uses port 8080, and `start-gemma.sh` needs that same port.
+
+## Two terminals
+
+You switch between two shells. Each command below says which one.
+
+**Computer terminal.** A normal terminal on your Mac or PC. You are not logged into the board. The prompt is your own account, for example `you@your-mac ~ %`. Relative paths such as `mac/relay.py`, `nano/tricorder_cam`, `unoq/`, `.venv`, and `./tools` only work after you `cd` into this project directory.
+
+**Arduino terminal.** An SSH session on the Uno Q. You open it from the computer terminal with `ssh`, and from then on that window runs on the board. The prompt looks like `arduino@YOUR_BOARD_NAME:~$`. A path that starts with `~/` or `/home/arduino/` in this window is on the board, not on your computer. The `>_` button at the bottom left of Arduino App Lab is also an Arduino terminal.
+
+## Replace these before you run a command
+
+These tokens are not real values. Type your own in their place. Leave every other part of the command as written.
+
+| Token | Replace with | Example from one setup |
+| --- | --- | --- |
+| `PROJECT_DIR` | The folder on your computer that contains `SETUP.md`, `mac/`, `nano/`, and `unoq/` | `/Users/you/Desktop/Arduino-Image-Scanner` |
+| `YOUR_BOARD` | The Uno Q's mDNS name or, if the name does not resolve, its Wi-Fi address | `roarduino.local` or `192.168.1.12` |
+| `YOUR_NANO_PORT` | The Nano's serial port from `./tools/arduino-cli board list` | `/dev/cu.usbmodem31201` on macOS |
+
+Do not change these unless you deliberately installed something somewhere else:
+
+- `arduino@` is the Linux user App Lab created on the board. The SSH password is the one you set in App Lab.
+- `/home/arduino/...` paths are on the board. `~` in an Arduino terminal is `/home/arduino`.
+- `arduino:mbed_nano:nano33ble` is the board type for the Nano 33 BLE.
+- `$HOME` in a computer-terminal command expands to your computer account's home folder (on macOS, `/Users/yourname`). Do not replace it with the board user.
+
+## Where files are saved
+
+| File | Machine | Saved at |
+| --- | --- | --- |
+| Python virtualenv | Computer | `PROJECT_DIR/.venv/` |
+| Arduino CLI | Computer | `PROJECT_DIR/tools/arduino-cli` |
+| OV767X library | Computer | `$HOME/Documents/Arduino/libraries/Arduino_OV767X/` |
+| One-shot camera test image | Computer | `/tmp/frame.png` |
+| Gemma text weights and `llama-server` | Uno Q | Already placed by [GEMMA_SETUP.md](GEMMA_SETUP.md): `/home/arduino/models/gemma-4-E2B-it-Q4_K_M.gguf` and `/home/arduino/llama.cpp/build/bin/llama-server` |
+| Vision projector | Uno Q | `/home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf` |
+| Viewscreen program and launcher | Uno Q | `/home/arduino/tricorder/tricorder.py` and `/home/arduino/tricorder/start-gemma.sh` |
+| Web page | Uno Q | `/home/arduino/tricorder/static/index.html` |
+
+`scp` is typed in the computer terminal. It reads a file from `PROJECT_DIR` and writes it to the path after the colon, which is on the board.
 
 ## What you need
 
@@ -21,125 +61,81 @@ Quit Arduino App Lab before you load Gemma. The model needs the board's memory.
 - Arduino Nano 33 BLE seated in the TinyML shield
 - OV7675 camera in the shield's camera header
 - A computer on the same Wi-Fi network, with Python 3 and a USB port for the Nano
-- This project directory
-
-The root partition is about 5 GB. `/home/arduino` is a separate 18 GB partition (`/dev/mmcblk0p69`). Clone llama.cpp and store the weights there. The two model files together are about 3.4 GB.
+- This project directory (`PROJECT_DIR`)
+- The Gemma install from [GEMMA_SETUP.md](GEMMA_SETUP.md) already finished on the board
 
 ## 1. Prepare the Uno Q
 
 Install Arduino App Lab and connect the Uno Q over USB. Walk through the first-time prompts:
 
-1. Give the board a name. This one was `RoArduino`.
+1. Give the board a name. One setup used `RoArduino`, which then answered as `roarduino.local`. Your name becomes the `YOUR_BOARD` hostname (`that-name.local`).
 2. Join the same Wi-Fi network as the computer.
 3. Set a Linux password for the user `arduino`. That password is the SSH password.
 4. Leave SSH enabled. App Lab turns it on as part of this setup.
 
-When the board is on Wi-Fi, open a terminal on the computer:
+**Computer terminal.** This command opens an Arduino terminal. Replace `YOUR_BOARD` with the name from step 1 plus `.local`:
 
 ```sh
-ssh arduino@roarduino.local
+ssh arduino@YOUR_BOARD
 ```
 
-If the name does not resolve, click the `>_` shell button at the bottom left of App Lab and run `hostname -I`. Use the address that is not `172.17.0.1` (that address is a local bridge on the board):
+You are done when the prompt changes to the board, for example `arduino@RoArduino:~$`. Later steps that say "Arduino terminal" mean this window, or another window you opened the same way.
+
+If the name does not resolve, read the board's address from an Arduino terminal (the App Lab `>_` shell works). Ignore `172.17.0.1`. That address is a local bridge on the board, not its Wi-Fi address.
 
 ```sh
-ssh arduino@192.168.1.12
+hostname -I
 ```
 
-You are done with this step when the prompt is a shell on the board.
-
-## 2. Free disk space
-
-On the board:
+Use the other address as `YOUR_BOARD` (no `.local`), still from the computer terminal:
 
 ```sh
-df -h / /home/arduino
+ssh arduino@YOUR_BOARD
 ```
 
-`/home/arduino` needs several gigabytes free for the source tree and the weights. Keep the 5 GB root partition clear of model files and build output.
+## 2. Add the vision projector
 
-## 3. Build llama.cpp on the board
+[GEMMA_SETUP.md](GEMMA_SETUP.md) downloads the text weights only. This project also needs the vision projector, or Scan has nothing to look at.
 
-Stay in the SSH session. This compile uses the board's CPU. Leave it running until both targets finish.
-
-```sh
-sudo apt update
-sudo apt install -y git build-essential cmake curl
-```
-
-If the blue "Daemons using outdated libraries" screen appears, press Tab to highlight `<Ok>`, then press Enter.
-
-```sh
-sudo apt clean
-cd /home/arduino
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-cmake -B build
-cmake --build build --config Release -j4 --target llama-cli llama-server
-```
-
-`ggerganov/llama.cpp` redirects to `ggml-org/llama.cpp`. Building from `/home/arduino` keeps the tree on the 18 GB home partition. Name both targets in one command so `llama-cli` and `llama-server` are both produced.
-
-Confirm both programs exist:
-
-```sh
-ls -l ~/llama.cpp/build/bin/llama-cli ~/llama.cpp/build/bin/llama-server
-```
-
-`llama-server` is a small program that loads shared libraries sitting next to it. Later steps run it with `LD_LIBRARY_PATH` set to that directory. `unoq/start-gemma.sh` does that for you.
-
-## 4. Download Gemma 4 E2B
-
-Still on the board. The text weights are the Unsloth Q4_K_M file. The vision projector is a separate, smaller file from the ggml-org repository. Hugging Face redirects the download, so `curl` needs `-L`. `-C -` resumes a partial file if Wi-Fi drops. Run the same command again until the size matches.
+**Arduino terminal.** The file is saved on the board at `/home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf`. Nothing in this command is a placeholder. `-C -` resumes a partial file if Wi-Fi drops. Run it again until the size matches.
 
 ```sh
 mkdir -p /home/arduino/models
 cd /home/arduino/models
-
-curl -L -C - -o gemma-4-E2B-it-Q4_K_M.gguf \
-  https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf
-
 curl -L -C - -o mmproj-gemma-4-E2B-it-Q8_0.gguf \
   https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf
 ```
 
-A finished pair is these exact sizes:
+A finished projector is 557368064 bytes (`ls -lh` shows about `532M`). A smaller number is an incomplete download.
 
 ```sh
-stat -c '%n %s' /home/arduino/models/*.gguf
+stat -c '%n %s' /home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf
 ```
 
-| File | Bytes |
+`start-gemma.sh` expects these three paths, which match GEMMA_SETUP.md plus the file you just saved:
+
+| Variable | Path on the Uno Q |
 | --- | --- |
-| `gemma-4-E2B-it-Q4_K_M.gguf` | 3106738272 |
-| `mmproj-gemma-4-E2B-it-Q8_0.gguf` | 557368064 |
+| `LLAMA_SERVER` | `/home/arduino/llama.cpp/build/bin/llama-server` |
+| `MODEL` | `/home/arduino/models/gemma-4-E2B-it-Q4_K_M.gguf` |
+| `MMPROJ` | `/home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf` |
 
-`ls -lh` shows about `2.9G` and `532M`. A smaller number is an incomplete download.
+## 3. Prepare the computer
 
-Optional text check, before the camera is involved. Quit App Lab first.
+**Computer terminal.** `cd` into the project first. Replace `PROJECT_DIR`.
 
 ```sh
-cd /home/arduino/llama.cpp/build/bin
-export LD_LIBRARY_PATH="$PWD"
-./llama-cli \
-  -m /home/arduino/models/gemma-4-E2B-it-Q4_K_M.gguf \
-  --no-mmproj \
-  -p "Respond with exactly three words confirming you are operational." \
-  -n 32 -t 4 -c 512 --temp 0.1 --single-turn
+cd PROJECT_DIR
 ```
 
-The first reply takes about a minute. A log line about failing to fit the model into device memory means the accelerator path was skipped. The process continues on the CPU. Keep the context at 512 for this check. Stop `llama-cli` before the next section so the board can load the model again.
-
-## 5. Prepare the computer
-
-On the computer, from this project directory:
+The virtualenv is created at `PROJECT_DIR/.venv/` on the computer:
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r mac/requirements.txt
 ```
 
-Install the Arduino CLI into `tools/` (that directory is local and is not part of the git history):
+The Arduino CLI is saved at `PROJECT_DIR/tools/arduino-cli`. `tools/` stays on your computer and is not part of the git history.
 
 ```sh
 mkdir -p tools
@@ -147,14 +143,14 @@ curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.
 ./tools/arduino-cli version
 ```
 
-Install the Nano core:
+Install the Nano core. Still the computer terminal, still `PROJECT_DIR`:
 
 ```sh
 ./tools/arduino-cli core update-index
 ./tools/arduino-cli core install arduino:mbed_nano
 ```
 
-The Library Manager copy of `Arduino_OV767X` (0.0.2) cannot start an OV7675. Install the current GitHub copy:
+The Library Manager copy of `Arduino_OV767X` (0.0.2) cannot start an OV7675. Install the current GitHub copy. It is saved on the computer at `$HOME/Documents/Arduino/libraries/Arduino_OV767X/`. `$HOME` is your computer account, not `arduino`. If Arduino uses a different sketchbook folder, replace `$HOME/Documents/Arduino/libraries` with that folder (Arduino IDE: Settings → Sketchbook location, then `libraries` inside it).
 
 ```sh
 curl -fsSL -o /tmp/ov767x.zip https://github.com/arduino-libraries/Arduino_OV767X/archive/refs/heads/master.zip
@@ -163,7 +159,9 @@ unzip -q /tmp/ov767x.zip -d /tmp
 mv /tmp/Arduino_OV767X-master "$HOME/Documents/Arduino/libraries/Arduino_OV767X"
 ```
 
-## 6. Seat the camera hardware
+The zip itself is only a temp file at `/tmp/ov767x.zip` on the computer.
+
+## 4. Seat the camera hardware
 
 1. Seat the Nano in the TinyML shield's two 1x15 headers with the USB silkscreen lined up. A Nano seated backwards does not run this sketch.
 2. Seat the OV7675 in the shield's 2x10 header. The lens is farther from the Nano, the pins are fully in, and the lens cap is off.
@@ -171,95 +169,88 @@ mv /tmp/Arduino_OV767X-master "$HOME/Documents/Arduino/libraries/Arduino_OV767X"
 
 No jumper wires run between the Nano and the Uno Q.
 
-## 7. Upload the camera sketch
+## 5. Upload the camera sketch
 
-The sketch in `nano/tricorder_cam` waits for the letter `S` on serial, then sends one QCIF RGB565 frame (176×144). That size fits the Nano. A larger color frame does not.
+The sketch in `PROJECT_DIR/nano/tricorder_cam` waits for the letter `S` on serial, then sends one QCIF RGB565 frame (176×144). That size fits the Nano. A larger color frame does not.
 
-Find the port:
+**Computer terminal**, in `PROJECT_DIR`. Find the port:
 
 ```sh
 ./tools/arduino-cli board list
 ```
 
-On macOS it looks like `/dev/cu.usbmodem…`. This computer used `/dev/cu.usbmodem31201`. Use the port from `board list`.
+On macOS the Nano looks like `/dev/cu.usbmodem…`. Copy that whole path. It is `YOUR_NANO_PORT` in the next commands. One computer used `/dev/cu.usbmodem31201`. Yours will differ. Do not change `--fqbn arduino:mbed_nano:nano33ble` or the sketch folder `nano/tricorder_cam`.
 
 ```sh
 ./tools/arduino-cli compile --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
-./tools/arduino-cli upload -p /dev/cu.usbmodem31201 --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
+./tools/arduino-cli upload -p YOUR_NANO_PORT --fqbn arduino:mbed_nano:nano33ble nano/tricorder_cam
 ```
 
 A warning that the camera library says `mbed` rather than `mbed_nano` can be ignored.
 
-Check the camera on its own, before involving the Uno Q:
+Check the camera on its own, before involving the Uno Q. The PNG is saved on the computer at `/tmp/frame.png`. Replace `YOUR_NANO_PORT` only.
 
 ```sh
-.venv/bin/python mac/relay.py --port /dev/cu.usbmodem31201 --once /tmp/frame.png
+.venv/bin/python mac/relay.py --port YOUR_NANO_PORT --once /tmp/frame.png
 ```
 
-Open `/tmp/frame.png`. If the colors are swapped, add `--swap-bytes` to this command and to the relay command in the last step.
+Open `/tmp/frame.png` from the computer (Finder → Go → Go to Folder, or `open /tmp/frame.png` in the computer terminal). If the colors are swapped, add `--swap-bytes` to this command and to the relay command in the last step.
 
 The relay may say there was no boot banner. That is normal when the sketch is already running. It still takes the next frame. A red LED blinking on the Nano, or the message `CAM_FAIL`, means the camera did not start. Reseat the camera and the Nano, then upload again.
 
-## 8. Copy the viewscreen onto the Uno Q
+## 6. Copy the viewscreen onto the Uno Q
 
-From this project directory on the computer. Password login as `arduino` is enough.
+**Computer terminal**, in `PROJECT_DIR`. These commands read files from `PROJECT_DIR/unoq/` on the computer and write them on the board. Replace `YOUR_BOARD` in every line. Leave `~/tricorder` as written: on the board that is `/home/arduino/tricorder/`.
 
 ```sh
-ssh arduino@roarduino.local 'mkdir -p ~/tricorder/static'
-scp unoq/tricorder.py unoq/start-gemma.sh arduino@roarduino.local:~/tricorder/
-scp unoq/static/index.html arduino@roarduino.local:~/tricorder/static/index.html
-ssh arduino@roarduino.local 'chmod +x ~/tricorder/start-gemma.sh'
+ssh arduino@YOUR_BOARD 'mkdir -p ~/tricorder/static'
+scp unoq/tricorder.py unoq/start-gemma.sh arduino@YOUR_BOARD:~/tricorder/
+scp unoq/static/index.html arduino@YOUR_BOARD:~/tricorder/static/index.html
+ssh arduino@YOUR_BOARD 'chmod +x ~/tricorder/start-gemma.sh'
 ```
 
-`start-gemma.sh` looks for these paths:
+After this, the board has:
 
-| Variable | Default |
-| --- | --- |
-| `LLAMA_SERVER` | `/home/arduino/llama.cpp/build/bin/llama-server` |
-| `MODEL` | `/home/arduino/models/gemma-4-E2B-it-Q4_K_M.gguf` |
-| `MMPROJ` | `/home/arduino/models/mmproj-gemma-4-E2B-it-Q8_0.gguf` |
+- `/home/arduino/tricorder/tricorder.py`
+- `/home/arduino/tricorder/start-gemma.sh`
+- `/home/arduino/tricorder/static/index.html`
 
-The page sends images to `http://127.0.0.1:8080/v1/chat/completions` on the board. The server listens only on the board, not on the network.
+The page sends images to `http://127.0.0.1:8080/v1/chat/completions` on the board. That server listens only on the board, not on the network.
 
-## 9. Run it
+## 7. Run it
 
-Quit App Lab first. You need three sessions.
+Quit App Lab first. Stop the GEMMA_SETUP.md chat server if it is still running. You need three terminals at once. Leave each one open.
 
-Session 1, on the Uno Q. Leave it open.
+**Arduino terminal 1.** From a computer terminal, SSH in, then run the launcher on the board. Replace `YOUR_BOARD`. The second line runs only after the prompt is on the board.
 
 ```sh
-ssh arduino@roarduino.local
+ssh arduino@YOUR_BOARD
 ~/tricorder/start-gemma.sh
 ```
 
-Wait until the log says the server is listening on `http://127.0.0.1:8080`. A line about failing to fit the model into device memory is a warning. The server continues and loads on the CPU.
+`~/tricorder/start-gemma.sh` is `/home/arduino/tricorder/start-gemma.sh`. Wait until the log says the server is listening on `http://127.0.0.1:8080`. A line about failing to fit the model into device memory is a warning. The server continues and loads on the CPU.
 
-Session 2, a second SSH login:
+**Arduino terminal 2.** Open a second computer terminal and SSH in again. Do not type this in terminal 1.
 
 ```sh
-ssh arduino@roarduino.local
+ssh arduino@YOUR_BOARD
 python3 ~/tricorder/tricorder.py
 ```
 
-That prints `tricorder http://0.0.0.0:8090`. The page listens on IPv4 and IPv6.
+`tricorder.py` is the copy at `/home/arduino/tricorder/tricorder.py`. That prints `tricorder http://0.0.0.0:8090`. The page listens on IPv4 and IPv6.
 
-Session 3, on the computer, from this project directory. Use your Nano port, and add `--swap-bytes` if the test PNG needed it.
-
-```sh
-.venv/bin/python mac/relay.py --host http://roarduino.local:8090 --port /dev/cu.usbmodem31201
-```
-
-It prints `waiting for Scan on http://roarduino.local:8090`. If the name does not resolve, use the board's address:
+**Computer terminal.** A third window, not an SSH session. `cd` to `PROJECT_DIR`. Replace `YOUR_BOARD` and `YOUR_NANO_PORT`. Add `--swap-bytes` after the port only if `/tmp/frame.png` had swapped colors.
 
 ```sh
-.venv/bin/python mac/relay.py --host http://192.168.1.12:8090 --port /dev/cu.usbmodem31201
+cd PROJECT_DIR
+.venv/bin/python mac/relay.py --host http://YOUR_BOARD:8090 --port YOUR_NANO_PORT
 ```
 
-`hostname -I` on the board shows the current address. Ignore `172.17.0.1`.
+It prints `waiting for Scan on http://YOUR_BOARD:8090`. If you used an mDNS name and it does not resolve, run `hostname -I` in an Arduino terminal, ignore `172.17.0.1`, and run the same command again with that address as `YOUR_BOARD`.
 
-## 10. Take a reading
+## 8. Take a reading
 
-Open `http://roarduino.local:8090` in a browser. If that name fails to load, open `http://<board-ip>:8090`.
+On the computer, open a browser to `http://YOUR_BOARD:8090`. Same host you used for `--host`, without the `:8090` mismatch: if the relay uses an IP, the browser must use that IP too.
 
 Hold the camera a few inches from the subject and press Scan.
 
@@ -267,18 +258,23 @@ The snapshot shows up first. The sentence follows after the board finishes, on t
 
 ## Stop
 
-Close the relay with Ctrl-C. On the board, Ctrl-C the viewscreen and `start-gemma.sh`.
+In the computer terminal that is running the relay, press Ctrl-C.
+
+In Arduino terminal 2, press Ctrl-C to stop the viewscreen.
+
+In Arduino terminal 1, press Ctrl-C to stop `start-gemma.sh`.
 
 ## Where to change things
 
-The report wording lives in the `SYSTEM` string in `unoq/tricorder.py`. The page layout and copy live in `unoq/static/index.html`. After either change, copy that file to the board again with the `scp` commands in step 8.
+The report wording lives in the `SYSTEM` string in `PROJECT_DIR/unoq/tricorder.py` on the computer. The page layout and copy live in `PROJECT_DIR/unoq/static/index.html`. Editing those files on the computer does nothing until you copy them again with the `scp` commands in step 6. Those commands overwrite `/home/arduino/tricorder/tricorder.py` and `/home/arduino/tricorder/static/index.html` on the board.
 
 | What | Where |
 | --- | --- |
-| Page port | `TRICORDER_PORT` on the board (default `8090`) |
-| Model HTTP API | `GEMMA_URL` on the board |
-| Model files and `llama-server` | `MODEL`, `MMPROJ`, `LLAMA_SERVER` when starting `start-gemma.sh` |
-| Board address the computer calls | `mac/relay.py --host` |
-| Swapped red and blue | `mac/relay.py --swap-bytes` |
+| Page port | `TRICORDER_PORT` in the Arduino terminal that starts `tricorder.py` (default `8090`) |
+| Model HTTP API | `GEMMA_URL` in that same Arduino terminal |
+| Model files and `llama-server` | `MODEL`, `MMPROJ`, `LLAMA_SERVER` in the Arduino terminal that starts `start-gemma.sh`, if your copies are not in `/home/arduino/models` and `/home/arduino/llama.cpp/build/bin` |
+| Board address the computer calls | `YOUR_BOARD` in `mac/relay.py --host` and in the browser URL |
+| Nano serial port | `YOUR_NANO_PORT` |
+| Swapped red and blue | `--swap-bytes` on the computer-terminal relay command |
 
-`tricorder.py` only needs the Python standard library on the Uno Q. The computer needs `pyserial`, from `mac/requirements.txt`.
+`tricorder.py` only needs the Python standard library on the Uno Q. The computer needs `pyserial`, from `mac/requirements.txt`, installed into `PROJECT_DIR/.venv`.

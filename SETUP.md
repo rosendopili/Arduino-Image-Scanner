@@ -23,7 +23,7 @@ Quit Arduino App Lab before you load Gemma. The model needs the board's memory.
 - A computer on the same Wi-Fi network, with Python 3 and a USB port for the Nano
 - This project directory
 
-The Uno Q root filesystem that holds `/home` is about 9.8 GB. The two model files together are about 3.4 GB, and the llama.cpp build needs more room on top of that. Check free space before the download and leave at least 5 GB free.
+The root partition is about 5 GB. `/home/arduino` is a separate 18 GB partition (`/dev/mmcblk0p69`). Clone llama.cpp and store the weights there. The two model files together are about 3.4 GB.
 
 ## 1. Prepare the Uno Q
 
@@ -53,12 +53,12 @@ You are done with this step when the prompt is a shell on the board.
 On the board:
 
 ```sh
-df -h /
+df -h / /home/arduino
 ```
 
-The `Avail` column needs at least 5 GB before you clone llama.cpp and download the weights.
+`/home/arduino` needs several gigabytes free for the source tree and the weights. Keep the 5 GB root partition clear of model files and build output.
 
-If a previous Ollama install is still on the board, its model blobs sit on this same partition. Remove them, then check again:
+If a previous Ollama install is still on the board, remove it, then check again:
 
 ```sh
 sudo systemctl stop ollama
@@ -70,7 +70,7 @@ sudo rm -f /usr/local/bin/ollama /usr/bin/ollama
 sudo rm -rf /usr/local/lib/ollama /usr/lib/ollama /usr/share/ollama
 sudo rm -rf /home/arduino/ollama_models /home/arduino/.ollama /root/.ollama
 sudo apt clean
-df -h /
+df -h / /home/arduino
 ```
 
 ## 3. Build llama.cpp on the board
@@ -79,16 +79,21 @@ Stay in the SSH session. This compile uses the board's CPU. Leave it running unt
 
 ```sh
 sudo apt update
-sudo apt install -y git build-essential cmake
-cd ~
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-cmake -B build -DLLAMA_BUILD_SERVER=ON
-cmake --build build --config Release -j4 --target llama-server
-cmake --build build --config Release -j4 --target llama-cli
+sudo apt install -y git build-essential cmake curl
 ```
 
-`ggerganov/llama.cpp` redirects to `ggml-org/llama.cpp`. Building `llama-server` does not produce `llama-cli`, so build that target on its own.
+If the blue "Daemons using outdated libraries" screen appears, press Tab to highlight `<Ok>`, then press Enter.
+
+```sh
+sudo apt clean
+cd /home/arduino
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build
+cmake --build build --config Release -j4 --target llama-cli llama-server
+```
+
+`ggerganov/llama.cpp` redirects to `ggml-org/llama.cpp`. Building from `/home/arduino` keeps the tree on the 18 GB home partition. Name both targets in one command so `llama-cli` and `llama-server` are both produced.
 
 Confirm both programs exist:
 
